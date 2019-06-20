@@ -13,7 +13,7 @@ The native image is:
 target/xmlJsonConverter-1.0-SNAPSHOT-runner
 ```
 
-### Build a docker image with a native executable
+### Build a docker image with a native executable (DON'T!! Do the Tiny one!)
 
 Build the linux native executable:
 ```
