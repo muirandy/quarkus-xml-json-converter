@@ -49,48 +49,23 @@ public class ConverterShould {
                                                                                      .waitingFor(Wait.forLogMessage(".*started.*\\n", 1));
     private static final String KAFKA_DESERIALIZER = "org.apache.kafka.common.serialization.StringDeserializer";
     private static final String KAFKA_SERIALIZER = "org.apache.kafka.common.serialization.StringSerializer";
+
     @Container
     private GenericContainer converterContainer = new GenericContainer("sns/quarkus-xml-json-converter-tiny:latest")
             .withNetwork(KAFKA_CONTAINER.getNetwork())
             .withEnv(calculateEnvProperties())
             .waitingFor(Wait.forLogMessage(".*Stream manager initializing.*\\n", 1))
-            .waitingFor(Wait.forLogMessage(".*Quarkus 0.16.1 started.*\\n", 1));
+            .waitingFor(Wait.forLogMessage(".*Quarkus .* started.*\\n", 1));
 
     private String randomValue = generateRandomString();
     private String orderId = generateRandomString();
 
     private Map<String, String> calculateEnvProperties() {
-        createTopics();
         Map<String, String> envProperties = new HashMap<>();
         String bootstrapServers = KAFKA_CONTAINER.getNetworkAliases().get(0);
         envProperties.put(ENV_KEY_KAFKA_BROKER_SERVER, bootstrapServers);
         envProperties.put(ENV_KEY_KAFKA_BROKER_PORT, "" + 9092);
         return envProperties;
-    }
-
-    private void createTopics() {
-        AdminClient adminClient = AdminClient.create(getProperties());
-        NewTopic xmlTopic = new NewTopic(XML_TOPIC, 1, (short) 1);
-        NewTopic jsonTopic = new NewTopic(JSON_TOPIC, 1, (short) 1);
-
-        List<NewTopic> newTopics = new ArrayList<>();
-        newTopics.add(xmlTopic);
-        newTopics.add(jsonTopic);
-
-        CreateTopicsResult createTopicsResult = adminClient.createTopics(newTopics, new CreateTopicsOptions().timeoutMs(10000));
-        Map<String, KafkaFuture<Void>> futureResults = createTopicsResult.values();
-        futureResults.values().forEach(f -> {
-            try {
-                f.get(10000, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } catch (ExecutionException e) {
-                e.printStackTrace();
-            } catch (TimeoutException e) {
-                e.printStackTrace();
-            }
-        });
-        adminClient.close();
     }
 
     private Properties getProperties() {
@@ -120,7 +95,7 @@ public class ConverterShould {
 
     private void waitForDockerEnvironment() {
         try {
-            Thread.sleep(8000);
+            Thread.sleep(1000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -134,14 +109,8 @@ public class ConverterShould {
 
     @Test
     public void convertsAnyXmlToJson() throws ExecutionException, InterruptedException {
-
-        //        createTopics();
-        waitForDockerEnvironment();
-
-        //when
         writeXmlToInputTopic();
 
-        //then
         assertKafkaMessageEquals();
     }
 
@@ -162,7 +131,6 @@ public class ConverterShould {
             fail("Did not find expected record");
     }
 
-    @NotNull
     private ProducerRecord createKafkaProducerRecord(String orderId) {
         return new ProducerRecord(XML_TOPIC, orderId, createMessage(orderId));
     }
@@ -193,7 +161,6 @@ public class ConverterShould {
         );
     }
 
-    @NotNull
     private KafkaConsumer<String, String> createKafkaConsumer(Properties props) {
         KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
         consumer.subscribe(Collections.singletonList(JSON_TOPIC));
@@ -214,31 +181,7 @@ public class ConverterShould {
         );
     }
 
-    @NotNull
     private String generateRandomString() {
         return String.valueOf(new Random().nextLong());
-    }
-
-    private String createModifyVoiceMessage(String orderId) {
-        return String.format(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
-                        "                <transaction receivedDate=\"2018-11-15T10:29:07\" operatorId=\"sky\" operatorTransactionId=\"op_trans_id_095025_228\" operatorIssuedDate=\"2011-06-01T09:51:12\">\n" +
-                        "                  <instruction version=\"1\" type=\"PlaceOrder\">\n" +
-                        "                    <order>\n" +
-                        "                      <type>modify</type>\n" +
-                        "                      <operatorOrderId>SogeaVoipModify_${opereratorOrderId}</operatorOrderId>\n" +
-                        "                      <operatorNotes>Test: notes</operatorNotes>\n" +
-                        "                      <orderId>%1$s</orderId>\n" +
-                        "                    </order>\n" +
-                        "                    <modifyFeaturesInstruction serviceId=\"31642339\" operatorOrderId=\"SogeaVoipModify_${opereratorOrderId}\" operatorNotes=\"Test: addThenRemoveStaticIpToAnFttcService\">\n" +
-                        "                      <features>\n" +
-                        "                          <feature code=\"CallerDisplay\"/>\n" +
-                        "                          <feature code=\"RingBack\"/>\n" +
-                        "                          <feature code=\"ChooseToRefuse\"/>\n" +
-                        "                      </features>\n" +
-                        "                    </modifyFeaturesInstruction>\n" +
-                        "                  </instruction>\n" +
-                        "                </transaction>",
-                orderId);
     }
 }
