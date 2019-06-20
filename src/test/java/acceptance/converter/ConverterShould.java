@@ -188,7 +188,7 @@ public class ConverterShould {
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
                         "<order>" +
                         "<orderId>%s</orderId>\n" +
-                        "<randomValue>%s</randomValue> +" +
+                        "<randomValue>%s</randomValue>" +
                         "</order>", orderId, randomValue
         );
     }
