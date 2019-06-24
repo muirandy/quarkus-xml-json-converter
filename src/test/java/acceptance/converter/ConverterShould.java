@@ -1,9 +1,5 @@
 package acceptance.converter;
 
-import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.admin.CreateTopicsOptions;
-import org.apache.kafka.clients.admin.CreateTopicsResult;
-import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -11,7 +7,6 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.KafkaFuture;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,12 +16,13 @@ import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.xmlunit.assertj.XmlAssert;
 
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -34,14 +30,13 @@ import static net.javacrumbs.jsonunit.JsonAssert.assertJsonEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.xmlunit.assertj.XmlAssert.assertThat;
 
 @Testcontainers
-public class ConverterShould {
+public abstract class ConverterShould {
     private static final String ENV_KEY_KAFKA_BROKER_SERVER = "KAFKA_BROKER_SERVER";
     private static final String ENV_KEY_KAFKA_BROKER_PORT = "KAFKA_BROKER_PORT";
 
-    private static final String XML_TOPIC = "incoming.op.msgs";
-    private static final String JSON_TOPIC = "modify.op.msgs";
 
     @Container
     private static final KafkaContainer KAFKA_CONTAINER = new KafkaContainer("5.2.1").withEmbeddedZookeeper()
@@ -65,26 +60,11 @@ public class ConverterShould {
         String bootstrapServers = KAFKA_CONTAINER.getNetworkAliases().get(0);
         envProperties.put(ENV_KEY_KAFKA_BROKER_SERVER, bootstrapServers);
         envProperties.put(ENV_KEY_KAFKA_BROKER_PORT, "" + 9092);
+        envProperties.putAll(createCustomEnvProperties());
         return envProperties;
     }
 
-    private Properties getProperties() {
-        String bootstrapServers = KAFKA_CONTAINER.getBootstrapServers();
-        //        String bootstrapServers = KAFKA_CONTAINER.getNetworkAliases().get(0) + ":9092";
-
-        Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put("acks", "all");
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KAFKA_SERIALIZER);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KAFKA_SERIALIZER);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KAFKA_DESERIALIZER);
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KAFKA_DESERIALIZER);
-        props.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "100");
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, this.getClass().getName());
-        return props;
-    }
+    protected abstract Map<String, String> createCustomEnvProperties();
 
     @BeforeEach
     public void setup() {
@@ -107,51 +87,51 @@ public class ConverterShould {
         System.out.println("XmlJsonConverter Logs = " + converterContainer.getLogs());
     }
 
-    @Test
-    public void convertsAnyXmlToJson() throws ExecutionException, InterruptedException {
-        writeXmlToInputTopic();
-
-        assertKafkaMessageEquals();
+    ProducerRecord createKafkaProducerRecord(Supplier<String> stringGenerator) {
+        return new ProducerRecord(getInputTopic(), orderId, stringGenerator.get());
     }
 
-    private void writeXmlToInputTopic() throws InterruptedException, ExecutionException {
-        new KafkaProducer<String, String>(getProperties()).send(createKafkaProducerRecord(orderId)).get();
-    }
+    public abstract String getInputTopic();
 
-    private void assertKafkaMessageEquals() {
-        ConsumerRecords<String, String> recs = pollForResults();
-        assertFalse(recs.isEmpty());
-
-        Spliterator<ConsumerRecord<String, String>> spliterator = Spliterators.spliteratorUnknownSize(recs.iterator(), 0);
-        Stream<ConsumerRecord<String, String>> consumerRecordStream = StreamSupport.stream(spliterator, false);
-        Optional<ConsumerRecord<String, String>> expectedConsumerRecord = consumerRecordStream.filter(cr -> foundExpectedRecord(cr.key()))
-                                                                                              .findAny();
-        expectedConsumerRecord.ifPresent(cr -> assertRecordValueJson(cr));
-        if (!expectedConsumerRecord.isPresent())
-            fail("Did not find expected record");
-    }
-
-    private ProducerRecord createKafkaProducerRecord(String orderId) {
-        return new ProducerRecord(XML_TOPIC, orderId, createMessage(orderId));
-    }
-
-    private ConsumerRecords<String, String> pollForResults() {
+    ConsumerRecords<String, String> pollForResults() {
         KafkaConsumer<String, String> consumer = createKafkaConsumer(getProperties());
-        Duration duration = Duration.ofSeconds(2);
+        Duration duration = Duration.ofSeconds(4);
         return consumer.poll(duration);
     }
 
-    private boolean foundExpectedRecord(String key) {
+    private KafkaConsumer<String, String> createKafkaConsumer(Properties props) {
+        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
+        consumer.subscribe(Collections.singletonList(getOutputTopic()));
+        Duration immediately = Duration.ofSeconds(0);
+        consumer.poll(immediately);
+        return consumer;
+    }
+
+    protected abstract String getOutputTopic();
+
+    Properties getProperties() {
+        String bootstrapServers = KAFKA_CONTAINER.getBootstrapServers();
+        //        String bootstrapServers = KAFKA_CONTAINER.getNetworkAliases().get(0) + ":9092";
+
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put("acks", "all");
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KAFKA_SERIALIZER);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KAFKA_SERIALIZER);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KAFKA_DESERIALIZER);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KAFKA_DESERIALIZER);
+        props.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "100");
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, this.getClass().getName());
+        return props;
+    }
+
+    boolean foundExpectedRecord(String key) {
         return orderId.equals(key);
     }
 
-    private void assertRecordValueJson(ConsumerRecord<String, String> consumerRecord) {
-        String value = consumerRecord.value();
-        String expectedValue = formatExpectedValue(orderId);
-        assertJsonEquals(expectedValue, value);
-    }
-
-    private String createMessage(String orderId) {
+    String createXmlMessage() {
         return String.format(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
                         "<order>" +
@@ -161,15 +141,7 @@ public class ConverterShould {
         );
     }
 
-    private KafkaConsumer<String, String> createKafkaConsumer(Properties props) {
-        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
-        consumer.subscribe(Collections.singletonList(JSON_TOPIC));
-        Duration immediately = Duration.ofSeconds(0);
-        consumer.poll(immediately);
-        return consumer;
-    }
-
-    private String formatExpectedValue(String orderId) {
+    String createJsonMessage() {
         return String.format(
                 "{" +
                         "  \"order\":{" +
