@@ -7,30 +7,25 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.xmlunit.assertj.XmlAssert;
 
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.function.Function;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-import static net.javacrumbs.jsonunit.JsonAssert.assertJsonEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
-import static org.xmlunit.assertj.XmlAssert.assertThat;
 
 @Testcontainers
 public abstract class ConverterShould {
@@ -52,8 +47,8 @@ public abstract class ConverterShould {
             .waitingFor(Wait.forLogMessage(".*Stream manager initializing.*\\n", 1))
             .waitingFor(Wait.forLogMessage(".*Quarkus .* started.*\\n", 1));
 
-    private String randomValue = generateRandomString();
-    private String orderId = generateRandomString();
+    protected String randomValue = generateRandomString();
+    protected String orderId = generateRandomString();
 
     private Map<String, String> calculateEnvProperties() {
         Map<String, String> envProperties = new HashMap<>();
@@ -91,8 +86,6 @@ public abstract class ConverterShould {
         return new ProducerRecord(getInputTopic(), orderId, stringGenerator.get());
     }
 
-    public abstract String getInputTopic();
-
     ConsumerRecords<String, String> pollForResults() {
         KafkaConsumer<String, String> consumer = createKafkaConsumer(getProperties());
         Duration duration = Duration.ofSeconds(4);
@@ -107,6 +100,7 @@ public abstract class ConverterShould {
         return consumer;
     }
 
+    protected abstract String getInputTopic();
     protected abstract String getOutputTopic();
 
     Properties getProperties() {
@@ -153,7 +147,24 @@ public abstract class ConverterShould {
         );
     }
 
-    private String generateRandomString() {
+    protected String generateRandomString() {
         return String.valueOf(new Random().nextLong());
+    }
+
+    protected void writeMessageToInputTopic(Supplier<String> stringSupplier) throws ExecutionException, InterruptedException {
+        new KafkaProducer<String, String>(getProperties()).send(createKafkaProducerRecord(stringSupplier)).get();
+    }
+
+    protected void assertKafkaMessage(Consumer<ConsumerRecord<String, String>> consumerRecordConsumer) {
+        ConsumerRecords<String, String> recs = pollForResults();
+        assertFalse(recs.isEmpty());
+
+        Spliterator<ConsumerRecord<String, String>> spliterator = Spliterators.spliteratorUnknownSize(recs.iterator(), 0);
+        Stream<ConsumerRecord<String, String>> consumerRecordStream = StreamSupport.stream(spliterator, false);
+        Optional<ConsumerRecord<String, String>> expectedConsumerRecord = consumerRecordStream.filter(cr -> foundExpectedRecord(cr.key()))
+                                                                                              .findAny();
+        expectedConsumerRecord.ifPresent(consumerRecordConsumer);
+        if (!expectedConsumerRecord.isPresent())
+            fail("Did not find expected record");
     }
 }

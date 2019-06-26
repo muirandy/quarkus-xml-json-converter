@@ -23,6 +23,20 @@ public class ConverterApp {
     public KafkaMessage<String, String> process(KafkaMessage<String, String> message) {
         if (mode.equalsIgnoreCase("xmlToJson"))
             return KafkaMessage.of(message.getKey(), XmlJsonConverter.convertXmlToJson(message.getPayload()));
-        return KafkaMessage.of(message.getKey(), XmlJsonConverter.convertJsonToXml(message.getPayload()));
+        if (mode.equalsIgnoreCase("jsonToXml"))
+            return KafkaMessage.of(message.getKey(), XmlJsonConverter.convertJsonToXml(message.getPayload()));
+        if (mode.equalsIgnoreCase("mqConnector"))
+            return performActiveMqConnectorConversion(message);
+        throw new InvalidModeException(mode);
+    }
+
+    private KafkaMessage<String, String> performActiveMqConnectorConversion(KafkaMessage<String, String> message) {
+        return ActiveMqFacade.invoke(message);
+    }
+
+    private class InvalidModeException extends RuntimeException {
+        public InvalidModeException(String mode) {
+            super(mode);
+        }
     }
 }

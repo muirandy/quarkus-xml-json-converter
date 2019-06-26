@@ -1,18 +1,14 @@
 package acceptance.converter;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.producer.KafkaProducer;
 import org.junit.jupiter.api.Test;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
+import java.util.function.Consumer;
 
 import static net.javacrumbs.jsonunit.JsonAssert.assertJsonEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.jupiter.api.Assertions.fail;
 
 public class ConvertToJsonShould extends ConverterShould {
 
@@ -39,29 +35,17 @@ public class ConvertToJsonShould extends ConverterShould {
         return OUTPUT_TOPIC;
     }
 
-
     @Test
     public void convertsAnyXmlToJson() throws ExecutionException, InterruptedException {
-        writeXmlToInputTopic();
+        writeMessageToInputTopic(() -> createXmlMessage());
 
         assertKafkaJsonMessage();
     }
 
-    private void writeXmlToInputTopic() throws InterruptedException, ExecutionException {
-        new KafkaProducer<String, String>(getProperties()).send(createKafkaProducerRecord(()->createXmlMessage())).get();
-    }
-
     private void assertKafkaJsonMessage() {
-        ConsumerRecords<String, String> recs = pollForResults();
-        assertFalse(recs.isEmpty());
+        Consumer<ConsumerRecord<String, String>> consumerRecordConsumer = cr -> assertRecordValueJson(cr);
 
-        Spliterator<ConsumerRecord<String, String>> spliterator = Spliterators.spliteratorUnknownSize(recs.iterator(), 0);
-        Stream<ConsumerRecord<String, String>> consumerRecordStream = StreamSupport.stream(spliterator, false);
-        Optional<ConsumerRecord<String, String>> expectedConsumerRecord = consumerRecordStream.filter(cr -> foundExpectedRecord(cr.key()))
-                                                                                              .findAny();
-        expectedConsumerRecord.ifPresent(cr -> assertRecordValueJson(cr));
-        if (!expectedConsumerRecord.isPresent())
-            fail("Did not find expected record");
+        assertKafkaMessage(consumerRecordConsumer);
     }
 
     private void assertRecordValueJson(ConsumerRecord<String, String> consumerRecord) {

@@ -10,6 +10,7 @@ import static net.javacrumbs.jsonunit.JsonAssert.assertJsonEquals;
 public class XmlJsonConverterTest {
 
     private String orderId = "" + new Random().nextInt();
+    private String traceyId = "" + new Random().nextInt();
 
     @Test
     void convertsXmlToJson() {
@@ -25,6 +26,30 @@ public class XmlJsonConverterTest {
         XmlAssert.assertThat(xmlValue()).and(xmlString).ignoreWhitespace().areIdentical();
     }
 
+    @Test
+    void readsXmlFromJsonPayload() {
+        String xmlString = XmlJsonConverter.readXmlFieldFromJson("XML", activeMqConnectorJson());
+
+        XmlAssert.assertThat(xmlValue()).and(xmlString).ignoreWhitespace().areIdentical();
+    }
+
+    private String activeMqConnectorJson() {
+        return String.format("{"
+                + "\"ORDER_ID\":\"%s\","
+                + "\"TRACEY_ID\":\"%s\","
+                + "\"XML\":\"%s\""
+                + "}", orderId, traceyId, createXmlMessage());
+    }
+
+    private String createXmlMessage() {
+        return String.format(
+                "<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>" +
+                        "<order>" +
+                        "<orderId>%s</orderId>" +
+                        "</order>", orderId
+        );
+    }
+
     private String xmlValue() {
         return String.format(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
@@ -38,7 +63,7 @@ public class XmlJsonConverterTest {
         return String.format(
                 "{" +
                         "  \"order\":{" +
-                        "    \"orderId\":%s" +
+                        "    \"orderId\":\"%s\"" +
                         "  }" +
                         "}",
                 orderId
