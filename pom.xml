@@ -87,6 +87,12 @@
                 <groupId>io.quarkus</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>
                 <version>${quarkus.version}</version>
+                <configuration>
+                    <uberJar>true</uberJar>
+                    <ignoredEntries>
+                        <ignoredEntry>META-INF/DEPENDENCIES.txt</ignoredEntry>
+                    </ignoredEntries>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>

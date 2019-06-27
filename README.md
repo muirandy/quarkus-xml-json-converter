@@ -1,6 +1,16 @@
 ## Building
 
 ### Build and run a fat Jar
+```
+mvn install
+```
+
+The fat Jar is:
+```
+target/xmlJsonConverter-1.0-SNAPSHOT-runner.jar
+```
+
+### Build and run in Quarkus development mode:
 mvn compile quarkus:dev
 
 ### Build a native executable (Mac)
