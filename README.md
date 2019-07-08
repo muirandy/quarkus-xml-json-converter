@@ -23,6 +23,11 @@ The fat Jar is:
 target/xmlJsonConverter-1.0-SNAPSHOT-runner.jar
 ```
 
+Run the fat jar:
+```
+java -Xmx48M -jar target/xmlJsonConverter-1.0-SNAPSHOT-runner.jar
+```
+
 ### Build and run in Quarkus development mode:
 mvn compile quarkus:dev
 
